@@ -1,0 +1,315 @@
+\documentclass[a4paper,11pt]{article} % type
+\usepackage[french]{babel} % règles typographiques françaises
+\usepackage{exptech} % mise en forme technique
+\usepackage{graphicx} % insérer des images (\includegraphics)
+\usepackage{booktabs} % Améliore la qualité des tableaux (lignes horizontales propres)
+\usepackage{array} % Ajoute des options pour la mise en forme des tableaux
+\usepackage{hyperref} % Ajoute des liens cliquables
+\usepackage{listings} % Permet d'insérer et formater du code source
+\usepackage{xcolor} % Gère les couleurs (utile pour texte, tableaux, code, etc.)
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10}
+}
+
+\title{
+\begin{center}
+{\Huge \textbf{Rapport}} \\[1cm]
+{\textbf{} Aide à la lecture pour les manuels techniques d'appareils électroniques}
+\end{center}
+}
+
+\author{Victoire, Ilyas, Ma\"iwenn, Rayane, Louis 
+  \\ \\
+  Encadrant : Jean-Louis Pazat}
+
+\date{2025-2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Introduction}
+
+Un manuel de service pour un amplificateur ou autre appareil électronique ancien contient 
+plusieurs dizaines de pages hétérogènes (et souvent mal numérisées) : textes descriptifs, tableaux de composants, 
+schémas électroniques et illustrations de cartes.
+Pour un passionné souhaitant localiser le condensateur C14, par exemple, il doit
+manuellement parcourir la table, retenir la valeur, puis chercher visuellement dans les
+schémas et cartes aux styles variés.
+
+L'objectif de ce projet est d'automatiser cette navigation.
+Le système doit, à partir d'un PDF, permettre à l'utilisateur de cliquer sur un composant pour le voir mis en surbrillance
+dans toutes les vues simultanément.
+
+\section{Choix de la pipeline}
+(1)~extraire automatiquement les images pertinentes,
+(2)~reconnaître les identifiants de composants dans chacune, et
+(3)~lier le même composant en le mettant en surbrillance dans toutes les vues
+
+\section{État de l'art des outils}
+
+La première phase du projet a été consacrée à une exploration large des solutions
+disponibles pour extraire du texte depuis des documents PDF contenant des schémas.
+On distingue trois familles d'outils : les services en ligne, les bibliothèques OCR
+locales, et les détecteurs d'objets par apprentissage profond.
+
+\subsection{Services en ligne}
+
+Les services en ligne ont été les premiers évalués pour leur accessibilité.
+Ils produisent généralement un PDF sélectionnable ou un fichier texte, mais présentent
+tous des limitations rédhibitoires pour notre cas d'usage.
+
+\paragraph{PDFCandy et Smallpdf}
+Ces plateformes web~\cite{pdfcandy}~\cite{smallpdf} proposent une extraction de texte directe depuis
+un PDF.
+Les noms de nombreux composants sont reconnus, le texte est rendu sans ordre spatial et le résultat devient inutilisable sur les pages mêlant schémas et texte.
+Smallpdf présente les mêmes défauts, avec l'inconvénient supplémentaire
+d'être propriétaire, non entraînable, et disponible uniquement en ligne (donc
+inutilisable dans un pipeline local).
+
+\paragraph{ILovePDF OCR et Adobe Acrobat}
+ILovePDF~\cite{ilovepdf} et Adobe Acrobat produisent un PDF sélectionnable
+(score~: 6/10), ce qui facilite en théorie l'extraction de liens.
+Cependant, les deux échouent sur le texte incliné, omniprésent dans les schémas
+électroniques (étiquettes de composants souvent à 90° ou 45°).
+Adobe Acrobat reconnaît bien les noms de composants en position droite,
+mais reste sans solution pour les orientations non standard.
+De plus, ILovePDF est un service payant pour un usage intensif.
+
+\paragraph{ImagetoText}
+Cet outil en ligne (score~: 7/10) est partiellement ouvert via une API.
+Il reconnaît un grand nombre de noms de composants, mais le rendu textuel est
+désordonné : les coordonnées spatiales ne sont pas conservées, ce qui rend
+impossible toute correspondance entre un identifiant et sa position dans l'image.
+
+\paragraph{pdf24}
+pdf24~\cite{pdf24} obtient un score de 6,5/10.
+Son principal défaut est un dictionnaire trop complet : l'outil cherche à lire
+tous les caractères du document, y compris les traits et annotations des schémas,
+ce qui génère beaucoup de faux positifs.
+Il échoue également sur les caractères inclinés.
+
+\subsection{Bibliothèques OCR locales}
+
+\paragraph{Tesseract}
+Tesseract~\cite{tesseract} est un moteur OCR open-source maintenu par Google.
+Il excelle sur les images de bonne résolution contenant du texte structuré
+Il est possible de restreindre son vocabulaire ou de le fine-tuner sur des polices
+spécifiques.
+En revanche, il reste sensible aux petites polices et aux orientations non standard.
+
+\paragraph{EasyOCR}
+EasyOCR~\cite{easyocr} gère mieux les textes inclinés ou de faible contraste que Tesseract,
+mais son comportement est moins prédictible et ses hyperparamètres moins accessibles.
+Ses résultats sur les étiquettes de composants sont comparables à Tesseract,
+sans avantage décisif.
+
+\subsection{Détection d'objets par apprentissage profond}
+
+\paragraph{YOLO v8}
+YOLOv8~\cite{yolov8} (\textit{You Only Look Once}, version~8) est un détecteur d'objets.
+Sa principale force pour ce projet est son entraînabilité : en fournissant un dataset
+annoté au format Roboflow~\cite{roboflow}, on peut lui apprendre à reconnaître des classes
+spécifiques (table, schéma, carte, ou zones de texte composant).
+Son API Python est simple et s'intègre facilement dans un pipeline.
+
+\subsection{Tableau comparatif}
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+Outil & Type & Entraînable & Coord. & Texte incliné \\
+\midrule
+PDFCandy       & En ligne  & Non     & Non & Non \\
+Smallpdf       & En ligne  & Non     & Non & Non \\
+ILovePDF OCR   & En ligne  & Non     & Non & Non \\
+Adobe Acrobat  & En ligne  & Non     & Non & Non \\
+ImagetoText    & En ligne  & Partiel & Non & Partiel \\
+pdf24          & En ligne  & Non     & Non & Non \\
+Tesseract      & Local     & Partiel & Oui & Non \\
+EasyOCR        & Local     & Non     & Oui & Partiel \\
+YOLO v8        & Local     & Oui     & Oui & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Aucun outil pris isolément ne répond au besoin complet
+Nous partons sur une approche hybride détaillée à la section suivante.
+
+\section{Démarche et obstacles rencontrés}
+
+\subsection{Phase 1 : exploration (septembre -- octobre 2025)}
+
+Les premières séances ont été consacrées à l'exploration individuelle des outils disponibles.
+Une question centrale est rapidement apparue : fallait-il un seul outil polyvalent ou
+une combinaison spécialisée~?
+
+YOLO a été testé pour détecter directement les \textit{symboles} de composants
+(résistances, condensateurs) dans les schémas.
+Les résultats ont été décevants : les symboles électroniques sont trop petits, trop proches
+les uns des autres, et trop variables selon les fabricants pour constituer des classes
+stables sans un dataset très large.
+
+Tesseract a en revanche montré des résultats satisfaisants sur les tables de composants, qui contiennent du texte bien imprimé et structuré.
+Un script de post-traitement Excel permettait de corriger les confusions fréquentes
+(\texttt{Ç}→\texttt{C}, \texttt{0}→\texttt{O}, etc.).
+
+\subsection{Phase 2 : convergence vers YOLO + Tesseract (novembre 2025)}
+
+À l'issue de la comparaison, nous avons arrêté l'architecture suivante :
+\begin{itemize}
+  \item \textbf{YOLO} pour détecter les \textit{zones de texte} (séries de lettres et chiffres)
+        dans les schémas et cartes~;
+  \item \textbf{Tesseract} pour lire le contenu textuel de chacune de ces zones
+        et de la table de composants
+\end{itemize}
+
+Un datasaset à été construit : 800 boîtes annotées sur des schémas réels. Les annotations ont été effectuées via Roboflow en suivant le format YOLO
+(\texttt{train/}, \texttt{valid/}, \texttt{data.yaml}).
+
+\subsection{Phase 3 : problèmes d'intégration (décembre 2025 -- janvier 2026)}
+
+Nous avons rencontré plusieurs points :
+
+\paragraph{Conversion PDF → images}
+La bibliothèque \texttt{pdf2image}~\cite{pdf2image} a été retenue pour convertir les pages du PDF
+en images.
+Le paramètre \texttt{dpi=300} s'est avéré important : en dessous de 200 DPI, les caractères des étiquettes de composants devenaient illisibles pour l'OCR.
+
+\paragraph{Orientation des images}
+Certains texte sont à la vertical, Après l' extraction de YOLO, ces images arrivaient pivotées.
+Une correction de rotation systématique a été intégrée.
+
+\subsection{Phase 4 : choix entre YOLO et EasyOCR (janvier -- février 2026)}
+
+EasyOCR a été réévalué comme alternative à Tesseract + YOLO pour la lecture des schémas.
+Si ses résultats bruts étaient comparables, il a été écarté au profit de Tesseract + YOLO pour
+la détection de zones, car YOLO est entraînable et permet de cibler précisément les
+étiquettes de composants, là où EasyOCR ne disposait pas d'équivalent pour ce
+niveau de personnalisation.
+
+La décision finale a été de conserver détection de zone par YOLO, puis OCR par Tesseract. Deux modèles YOLO sont entraînés ; un pour détecter les tableaux et les schémas, et l'autre pour détecter les étiquettes de composants dans un shéma
+
+\subsection{Phase 5 : intégration finale (mars -- avril 2026)}
+
+Les différentes parties ont été progressivement intégrées dans un Jupyter Notebook
+unique (\texttt{NotebookEP.ipynb}).
+
+Le notebook à été transformé en application web via Voilà~\cite{voila}.
+
+\section{Architecture finale du pipeline}
+
+Le pipeline final est composé de trois modules Python orchestrés dans le notebook.
+
+\subsection{Vue d'ensemble}
+
+\begin{center}
+\begin{tabular}{clp{6cm}}
+\toprule
+Étape & Fichier & Rôle \\
+\midrule
+1 & \texttt{prediction.py} & Extraction brute de toutes les zones par YOLO \\
+2 & \texttt{merge.py}      & Sélection de la meilleure zone par classe, rotation, lancement \\
+3 & \texttt{test1.py}      & Interface interactive (OCR + affichage) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{\texttt{prediction.py} --- Extraction des zones}
+
+Ce module charge le modèle YOLO entraîné (\texttt{best.pt}) qui reconnaît trois classes :
+\texttt{Table}, \texttt{Diagram} et \texttt{Board}.
+Il convertit le PDF page par page (DPI~300)
+Chaque zone détectée est découpée dans l'image puis sauvegardée en PNG dans le répertoire de sortie.
+
+Le seuil de confiance volontairement bas (0,212) est justifié par le faible taux de faux
+positifs du modèle spécialisé : il vaut mieux ne pas manquer une table
+qu'écarter une détection incertaine.
+
+\subsection{\texttt{merge.py} --- Orchestration}
+
+Pour chaque classe \texttt{prediction.py}, il ne retient que \textbf{la zone de plus grande surface},
+ce qui correspond généralement à l'image la plus exploitable du document.
+
+Il applique ensuite les corrections de rotation et lance l'interface.
+L'orchestration est encapsulée dans une fonction \texttt{process\_and\_visualize(pdf\_path, model\_path)}.
+
+\subsection{\texttt{test1.py} --- Interface interactive}
+
+Il charge les images extraites.
+
+\subsubsection{Reconnaissance dans la table}
+
+La table BOM est traitée par Tesseract seul.
+On ne lit que la colonne de gauche, car c'est là que se trouvent systématiquement les identifiants.
+Avant l'OCR, l'image est convertie en niveaux de gris, agrandie d'un facteur~2
+et binarisée pour maximiser le contraste.
+
+\subsubsection{Reconnaissance dans le schéma et la carte}
+
+Pour les schémas et cartes PCB, les étiquettes sont dispersées et très petites.
+Une approche hybride est de nouveau utilisée :
+\begin{enumerate}
+  \item \textbf{YOLO \texttt{bestr.pt}} localise les zones probables d'étiquettes
+        (\textit{bounding boxes} avec \texttt{conf=0.20}, \texttt{imgsz=1280})~;
+  \item \textbf{Tesseract} lit chaque zone découpée après agrandissement (\(\times 3\))
+\end{enumerate}
+
+\subsubsection{Nettoyage des identifiants OCR}
+
+L'OCR introduit des erreurs récurrentes sur les petites polices.
+La fonction \texttt{clean\_ocr\_text()} applique un pipeline en trois étapes :
+\begin{enumerate}
+  \item Suppression des préfixes fantômes (\texttt{AR4} → \texttt{R4})~;
+  \item Suppression des zéros de remplissage (\texttt{Q010} → \texttt{Q10})~;
+  \item Correction des confusions visuelles (\texttt{RS} → \texttt{R5}).
+\end{enumerate}
+Les préfixes valides reconnus sont : R, C, L, Q, T, B, S, U, IC, TR, D, Z.
+
+\subsubsection{Interface Matplotlib}
+
+La figure finale présente trois panneaux côte à côte (table, schéma, carte).
+La liste des composants de la table est affichée dans un quatrième panneau
+sous forme de texte cliquable, colorié par famille (R, C, Q, etc.).
+
+L'interaction utilisateur repose sur trois événements :
+\begin{itemize}
+  \item \textbf{Clic gauche sur la liste} : zoom sur le composant dans les trois images
+        et affichage d'un rectangle rouge~;
+  \item \textbf{Clic gauche sur une image} : sélection du composant le plus proche et propagation aux autres panneaux~;
+  \item \textbf{Clic droit} : réinitialisation de toutes les vues.
+  \item \textbf{Molette} : zoom sur le curseur.
+\end{itemize}
+
+\section*{Bilan}
+
+\subsection*{Points positifs}
+
+Le pipeline fonctionne de bout en bout sur les fichiers de test.
+L'approche hybride YOLO + Tesseract permet d'allier la précision de localisation du
+réseau de neurones à la robustesse de l'OCR classique sur le texte structuré.
+Le taux de rappel du modèle de détection de noms atteint 0,80 à un seuil de confiance
+de 0,40, ce qui est satisfaisant pour un prototype.
+
+\subsection*{Pistes d'amélioration}
+
+Plusieurs limites ont été identifiées :
+\begin{itemize}
+    \item Les dataset d'entraînement restent de taille limité.
+        Un enrichissement améliorerait le rappel sur les documents non vus.
+    \item La transformation en application par l'intermédiaire de Voilà n'est pas finalisée : de fait, l'intervention de clics de l'utilisateur pose des problèmes de synchronisation. 
+        
+    \item à continuer
+\end{itemize}
+
+\section*{Conclusion}
+
+En conclusion, ce projet nous a avant tout permis de manipuler des modèles d'OCR. Il nous a aussi poussés à explorer la manipulation de chaînes de caractères avec Python ainsi que la travail de mise en commun de différents bouts de code.
+
+\bibliography{BiblioEP}
+
+\end{document}

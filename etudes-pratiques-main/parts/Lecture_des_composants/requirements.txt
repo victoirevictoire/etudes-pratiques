@@ -1,0 +1,20 @@
+# Dépendances du projet PCB Component Reference Extractor
+#
+# Installation :
+#   pip install -r requirements.txt
+#
+# Prérequis GPU (optionnel, accélère EasyOCR) :
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+# Détection d'objets (YOLOv8)
+ultralytics>=8.0.0
+
+# OCR — lecture de texte dans les crops
+easyocr>=1.7.0
+
+# Traitement d'image
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Pillow est requis indirectement par easyocr et ultralytics
+Pillow>=10.0.0

@@ -1,0 +1,34 @@
+# Résultats générés en local
+results/
+runs/
+
+# Caches YOLO
+**/*.cache
+**/*.npy
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Poids trop lourds (garder uniquement best.pt et last.pt)
+models/**/*.pt
+!models/**/{best,last}.pt
+
+# Environnements
+*.env
+yolo_env*/
+*/.venv
+
+# Checkpoints intermédiaires
+models/**/epoch*.pt
+models/**/train_batch*.jpg
+models/**/val_batch*.jpg
+
+# Notebook
+.ipynb_checkpoints
+*/IMAGES
+uploaded_images/
+
+.DS_Store
+.idea
